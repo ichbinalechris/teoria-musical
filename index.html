@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linha do Tempo Musical - Interativa</title>
+    <style>
+        :root {
+            --gold: #379dd4;
+            --dark: #000000;
+            --light: #f4f4f4;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--dark);
+            color: var(--light);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h1 { color: var(--gold); margin-bottom: 0; }
+        p.sub { margin-top: 5px; color: #888; }
+
+        .metronome-container {
+            margin: 20px;
+            padding: 15px;
+            border: 2px solid var(--gold);
+            border-radius: 10px;
+            text-align: center;
+            background: #222;
+        }
+
+        .dot { height: 15px; width: 15px; background-color: #000000; border-radius: 50%; display: inline-block; transition: 0.1s; }
+        .dot.active { background-color: #ff4444; box-shadow: 0 0 10px #ff4444; }
+
+        button {
+            background: var(--gold);
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        /* Pentagrama e Clave */
+        .staff-wrapper {
+            position: relative;
+            margin: 80px 0;
+            width: 90%;
+            max-width: 850px;
+        }
+
+        .staff {
+            height: 80px; /* Reduzido para proporção real */
+            border-top: 2px solid white;
+            border-bottom: 2px solid white;
+            background: linear-gradient(to bottom, 
+                transparent 24%, white 24%, white 26%, 
+                transparent 26%, transparent 49%, white 49%, white 51%, 
+                transparent 51%, transparent 74%, white 74%, white 76%, 
+                transparent 76%);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 0 60px;
+        }
+
+        .clef {
+            position: absolute;
+            left: 0;
+            top: -38px; /* Ajuste fino para a Clave de Sol circular a linha do Sol */
+            font-size: 130px;
+            color: white;
+            user-select: none;
+        }
+
+        .note {
+            width: 28px;
+            height: 20px;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            position: relative;
+            transition: 0.2s;
+            background: white;
+            z-index: 2;
+        }
+
+        .note:hover { transform: scale(1.4); background: var(--gold); border-color: var(--gold); }
+
+        /* Posicionamento Escala de Dó (Semibreves) */
+        .note[data-step="1"] { transform: translateY(50px); } 
+        .note[data-step="1"]::after { content: ''; position: absolute; width: 40px; height: 2px; background: white; top: 9px; left: -6px; z-index: -1; } /* Linha suplementar Dó */
+        .note[data-step="2"] { transform: translateY(40px); }
+        .note[data-step="3"] { transform: translateY(30px); }
+        .note[data-step="4"] { transform: translateY(20px); }
+        .note[data-step="5"] { transform: translateY(10px); }
+        .note[data-step="6"] { transform: translateY(0px); }
+        .note[data-step="7"] { transform: translateY(-10px); }
+        .note[data-step="8"] { transform: translateY(-20px); }
+        .note[data-step="9"] { transform: translateY(-30px); }
+        .note[data-step="10"] { transform: translateY(-40px); }
+
+        #content-display {
+            width: 85%;
+            max-width: 650px;
+            min-height: 120px;
+            background: #2a2a2a;
+            padding: 25px;
+            border-radius: 12px;
+            border-left: 6px solid var(--gold);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Timeline da Teoria Musical</h1>
+    <p class="sub">Clique nas notas</p>
+
+    <div class="metronome-container">
+        <div id="visual-beat" class="dot"></div>
+        <br>
+        <button onclick="toggleMetronome()" id="btn-metro">Ligar Metrônomo (Adágio)</button>
+    </div>
+
+    <div class="staff-wrapper">
+        <div class="clef">𝄞</div>
+        <div class="staff">
+            <div class="note" onclick="handleInteraction(1, 261.63)"></div>
+            <div class="note" onclick="handleInteraction(2, 293.66)"></div>
+            <div class="note" onclick="handleInteraction(3, 329.63)"></div>
+            <div class="note" onclick="handleInteraction(4, 349.23)"></div>
+            <div class="note" onclick="handleInteraction(5, 392.00)"></div>
+            <div class="note" onclick="handleInteraction(6, 440.00)"></div>
+            <div class="note" onclick="handleInteraction(7, 493.88)"></div>
+            <div class="note" onclick="handleInteraction(8, 523.25)"></div>
+            <div class="note" onclick="handleInteraction(9, 587.33)"></div>
+            <div class="note" onclick="handleInteraction(10, 659.25)"></div>
+        </div>
+    </div>
+
+    <div id="content-display">
+        <h3 id="info-title" style="margin-top:0">Bem vindo Professor!</h3>
+        <p id="info-text">Clique nas notas da partitura.</p>
+    </div>
+
+    <script>
+        // Contexto de Áudio (Navegadores exigem interação do usuário para ligar o som)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playTone(freq, duration, type = 'sine', volume = 0.1) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        const data = {
+            1: { t: "1. O Pulso e o Ritmo", d: "O nascimento da organização do tempo. Definição de figuras rítmicas e seus valores de duração." },
+            2: { t: "2. O Pentagrama e a Escrita", d: "A sistematização das alturas. Colocação das notas nas linhas e espaços para leitura musical." },
+            3: { t: "3. Intervalos Musicais", d: "A medida do som. O estudo da distância exata entre duas notas (2ªs, 3ªs, etc.)." },
+            4: { t: "4. A Escala Maior", d: "Construção do modelo de Tom e Semitom que define a sonoridade 'alegre' ou brilhante." },
+            5: { t: "5. A Escala Menor", d: "Novas cores e distâncias intervalares, trazendo o sentimento melancólico e variações harmônicas." },
+            6: { t: "6. Acidentes e Armaduras", d: "Uso de sustenidos e bemóis para organizar as diferentes tonalidades na pauta." },
+            7: { t: "7. Expressão e Dinâmica", d: "A 'Alma' da Música. Termos como Forte, Piano e Allegro que guiam a interpretação." },
+            8: { t: "8. Tríades", d: "A base da harmonia. União de Fundamental, Terça e Quinta (Maiores, Menores, etc.)." },
+            9: { t: "9. Tétrades", d: "A expansão do som. Adição da sétima às tríades, criando acordes mais densos e complexos." },
+            10: { t: "10. O Campo Harmônico", d: "Estágio final: onde escalas e acordes se unem para criar a fundação de uma música completa." }
+        };
+
+        function handleInteraction(id, freq) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            playTone(freq, 0.8, 'triangle', 0.2); // Som da nota (Triângulo soa mais como flauta/piano)
+            document.getElementById('info-title').innerText = data[id].t;
+            document.getElementById('info-text').innerText = data[id].d;
+        }
+
+        // Metrônomo
+        let isPlaying = false;
+        let metroInterval;
+
+        function toggleMetronome() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const beatDot = document.getElementById('visual-beat');
+            
+            if (isPlaying) {
+                clearInterval(metroInterval);
+                document.getElementById('btn-metro').innerText = "Ligar Metrônomo (Adágio)";
+                beatDot.classList.remove('active');
+            } else {
+                metroInterval = setInterval(() => {
+                    playTone(1000, 0.1, 'sine', 0.05); // Som do click
+                    beatDot.classList.add('active');
+                    setTimeout(() => beatDot.classList.remove('active'), 100);
+                }, 1000); 
+                document.getElementById('btn-metro').innerText = "Parar";
+            }
+            isPlaying = !isPlaying;
+        }
+    </script>
+</body>
+</html>
